@@ -50,6 +50,24 @@ Hệ thống **Phòng chơi game phân tán** được xây dựng bằng Node.j
 
 ---
 
+### InfluxDB 2.7 – Cơ sở dữ liệu chuỗi thời gian (Time-Series)
+
+Dự án sử dụng InfluxDB phiên bản 2.7 để lưu trữ và truy vấn dữ liệu thời gian thực như:
+- Thời gian tạo phòng
+- Lượt vào phòng
+- Ping trung bình theo thời gian
+
+---
+###  Nginx – Bộ cân bằng tải (Load Balancer)
+
+Nginx đóng vai trò là **công cụ cân bằng tải (load balancer)**, phân phối yêu cầu truy cập từ người dùng đến 3 backend instance của ứng dụng (http://localhost:3001, :3002, :3003). Việc này giúp:
+- Tăng khả năng chịu tải của hệ thống
+- Giảm tình trạng quá tải ở một instance
+- Hỗ trợ tính sẵn sàng cao (fault-tolerance)
+
+Nginx được cấu hình trong file `nginx.conf` và khởi chạy qua `docker-compose`.
+
+---
 ##  Cấu trúc dự án
 
 ```
