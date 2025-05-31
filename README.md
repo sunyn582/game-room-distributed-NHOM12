@@ -71,19 +71,23 @@ Nginx được cấu hình trong file `nginx.conf` và khởi chạy qua `docker
 ##  Cấu trúc dự án
 
 ```
-game-room-distributed/
+ame-room-distributed-NHOM12/
 ├── api/
-│   └── influxdb.js          # InfluxDB service
-├── app/
-│   └── server.js            # Main server
-├── view/
-│   ├── index.html           # Trang chủ
-│   └── room.html            # Trang phòng
-├── docker-compose.yml       # Docker services
-├── Dockerfile              # App container
-├── nginx.conf              # Load balancer config
-├── package.json            # Dependencies
-└── README.md
+│   ├── health/              
+│   │   └── health-check.js
+│   ├── middleware/          
+│   │   ├── circuit-breaker.js
+│   │   └── monitoring.js
+│   └── services/            
+│       ├── database-sharding.js
+│       └── monitoring-service.js
+├── scripts/                 
+│   ├── stress-test.js       
+│   └── run-tests.sh         
+├── monitoring/              
+│   ├── dashboard.html
+│   └── queries.js
+└── docker-compose.yml
 ```
 
 ![Sơ đồ kiến trúc](image/cautruc.png)

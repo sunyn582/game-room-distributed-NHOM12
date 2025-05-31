@@ -1,21 +1,29 @@
 {
-  "name": "game-room-distributed",
+  "name": "game-room-distributed-nhom12",
   "version": "1.0.0",
   "description": "Distributed Game Room System with InfluxDB",
   "main": "app/server.js",
   "scripts": {
     "start": "node app/server.js",
-    "dev": "nodemon app/server.js"
+    "dev": "nodemon app/server.js",
+    "test": "node scripts/stress-test.js",
+    "health": "curl -f http://localhost:3001/health"
   },
   "dependencies": {
     "@influxdata/influxdb-client": "^1.35.0",
     "@influxdata/influxdb-client-apis": "^1.35.0",
+    "axios": "^1.4.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "helmet": "^7.0.0",
+    "redis": "^4.6.7",
     "socket.io": "^4.7.2",
-    "uuid": "^9.0.0"
+    "ws": "^8.13.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }

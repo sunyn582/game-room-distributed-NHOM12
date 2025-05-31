@@ -1,11 +1,16 @@
+
 const express = require("express")
 const http = require("http")
 const socketIo = require("socket.io")
 const cors = require("cors")
+const helmet = require("helmet")
 const path = require("path")
-const { v4: uuidv4 } = require("uuid")
-const InfluxDBService = require("../api/influxdb")
-const DashboardService = require("../api/dashboard")
+
+// Import các modules mới
+const HealthChecker = require("../api/health/health-check")
+const CircuitBreaker = require("../api/middleware/circuit-breaker")
+const DatabaseSharding = require("../api/services/database-sharding")
+const MonitoringService = require("../api/services/monitoring-service")
 
 const app = express()
 const server = http.createServer(app)
@@ -16,282 +21,294 @@ const io = socketIo(server, {
   },
 })
 
-const PORT = process.env.PORT || 3000
-const INSTANCE_ID = process.env.INSTANCE_ID || "default"
-
-// Initialize InfluxDB
-const influxService = new InfluxDBService()
-const dashboardService = new DashboardService()
-
 // Middleware
+app.use(helmet())
 app.use(cors())
 app.use(express.json())
 app.use(express.static(path.join(__dirname, "../view")))
 
-// In-memory storage cho demo (trong production nên dùng Redis)
-const rooms = new Map()
-const userPings = new Map()
+// Initialize services
+const healthChecker = new HealthChecker()
+const dbSharding = new DatabaseSharding()
+const monitoring = new MonitoringService()
 
-// Routes
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../view/index.html"))
+// Circuit breakers for external services
+const dbCircuitBreaker = new CircuitBreaker("database", {
+  failureThreshold: 5,
+  timeout: 60000,
+  monitor: (msg) => console.log(`[Circuit Breaker] ${msg}`),
 })
 
-app.get("/room/:roomId", (req, res) => {
-  res.sendFile(path.join(__dirname, "../view/room.html"))
+const redisCircuitBreaker = new CircuitBreaker("redis", {
+  failureThreshold: 3,
+  timeout: 30000,
 })
 
-// API để tạo phòng
-app.post("/api/create-room", async (req, res) => {
+// Middleware để log requests
+app.use((req, res, next) => {
   const startTime = Date.now()
 
-  try {
-    const roomId = uuidv4().substring(0, 8)
-    const room = {
-      id: roomId,
-      name: req.body.name || `Room ${roomId}`,
-      users: [],
-      createdAt: new Date(),
-      instanceId: INSTANCE_ID,
-    }
-
-    rooms.set(roomId, room)
-
+  res.on("finish", () => {
     const responseTime = Date.now() - startTime
 
-    // Ghi vào InfluxDB
-    await influxService.writeRoomCreation(roomId, responseTime, INSTANCE_ID)
+    // Log to monitoring system
+    monitoring.logApiMetrics(req.path, req.method, responseTime, res.statusCode)
 
-    res.json({
-      success: true,
-      roomId: roomId,
-      room: room,
-      responseTime: responseTime,
+    console.log(`${req.method} ${req.path} - ${res.statusCode} - ${responseTime}ms`)
+  })
+
+  next()
+})
+
+// Health check endpoint
+app.get("/health", async (req, res) => {
+  try {
+    const healthStatus = await healthChecker.runAllChecks()
+    const statusCode = healthStatus.status === "healthy" ? 200 : 503
+    res.status(statusCode).json(healthStatus)
+  } catch (error) {
+    res.status(503).json({
+      status: "error",
+      message: error.message,
+      timestamp: new Date().toISOString(),
     })
+  }
+})
+
+// API Routes với Circuit Breaker protection
+app.get("/api/rooms", async (req, res) => {
+  try {
+    const rooms = await dbCircuitBreaker.execute(async () => {
+      // Lấy rooms từ tất cả shards
+      return await dbSharding.queryAllShards("room_data", "24h")
+    })
+
+    res.json({ rooms, count: rooms.length })
+  } catch (error) {
+    console.error("Error fetching rooms:", error)
+    res.status(500).json({ error: "Failed to fetch rooms" })
+  }
+})
+
+app.post("/api/rooms", async (req, res) => {
+  try {
+    const { name, maxPlayers, createdBy } = req.body
+    const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    const roomData = {
+      id: roomId,
+      name,
+      maxPlayers: maxPlayers || 4,
+      createdBy,
+      createdAt: new Date().toISOString(),
+      players: [],
+      status: "waiting",
+    }
+
+    // Lưu vào shard thích hợp
+    await dbCircuitBreaker.execute(async () => {
+      await dbSharding.writeRoomData(roomId, roomData)
+    })
+
+    // Log user activity
+    monitoring.logUserActivity(createdBy, "room_created", roomId)
+
+    // Broadcast to all clients
+    io.emit("room:created", roomData)
+
+    res.status(201).json(roomData)
   } catch (error) {
     console.error("Error creating room:", error)
-    res.status(500).json({ success: false, error: error.message })
+    res.status(500).json({ error: "Failed to create room" })
   }
 })
 
-// API để lấy thông tin phòng
-app.get("/api/room/:roomId", async (req, res) => {
-  const startTime = Date.now()
-  const roomId = req.params.roomId
-
+app.get("/api/rooms/:roomId", async (req, res) => {
   try {
-    const room = rooms.get(roomId)
-    if (!room) {
-      return res.status(404).json({ success: false, error: "Room not found" })
+    const { roomId } = req.params
+
+    const roomData = await dbCircuitBreaker.execute(async () => {
+      return await dbSharding.queryRoomData(roomId, "1h")
+    })
+
+    if (roomData.length === 0) {
+      return res.status(404).json({ error: "Room not found" })
     }
 
-    const responseTime = Date.now() - startTime
-
-    res.json({
-      success: true,
-      room: room,
-      responseTime: responseTime,
-    })
+    res.json(roomData[0])
   } catch (error) {
-    console.error("Error getting room:", error)
-    res.status(500).json({ success: false, error: error.message })
+    console.error("Error fetching room:", error)
+    res.status(500).json({ error: "Failed to fetch room" })
   }
 })
 
-// API để lấy thống kê
-app.get("/api/stats", async (req, res) => {
+app.post("/api/rooms/:roomId/join", async (req, res) => {
   try {
-    const stats = await influxService.getRoomStats()
-    res.json({
-      success: true,
-      stats: stats,
-      activeRooms: rooms.size,
-      instanceId: INSTANCE_ID,
-    })
+    const { roomId } = req.params
+    const { userId, username } = req.body
+
+    // Log user activity
+    monitoring.logUserActivity(userId, "room_joined", roomId)
+
+    // Broadcast to room
+    io.to(roomId).emit("user:joined", { userId, username, roomId })
+
+    res.json({ success: true, message: "Joined room successfully" })
   } catch (error) {
-    console.error("Error getting stats:", error)
-    res.status(500).json({ success: false, error: error.message })
+    console.error("Error joining room:", error)
+    res.status(500).json({ error: "Failed to join room" })
   }
 })
 
-// API dashboard cho nhóm 12
-app.get("/api/nhom12/stats", async (req, res) => {
+// Test endpoints cho stress testing
+app.post("/api/test/shard-write", async (req, res) => {
   try {
-    const timeRange = req.query.range || "1h"
-    const stats = await dashboardService.getNhom12Stats(timeRange)
-    res.json({
-      success: true,
-      data: stats,
+    const { roomId, userId, action } = req.body
+
+    await dbSharding.writeUserActivity(userId, {
+      type: action,
+      roomId,
       timestamp: new Date().toISOString(),
     })
+
+    res.json({ success: true, shard: dbSharding.getShardForUser(userId) })
   } catch (error) {
-    console.error("Error getting nhom12 stats:", error)
-    res.status(500).json({ success: false, error: error.message })
+    res.status(500).json({ error: error.message })
   }
 })
 
-app.get("/api/nhom12/top-rooms", async (req, res) => {
+app.get("/api/test/circuit-breaker", async (req, res) => {
   try {
-    const limit = Number.parseInt(req.query.limit) || 5
-    const topRooms = await dashboardService.getTopRoomsByPing(limit)
-    res.json({
-      success: true,
-      data: topRooms,
-      timestamp: new Date().toISOString(),
-    })
+    const shouldFail = req.query.fail === "true"
+
+    if (shouldFail) {
+      throw new Error("Simulated failure for circuit breaker testing")
+    }
+
+    res.json({ success: true, message: "Circuit breaker test passed" })
   } catch (error) {
-    console.error("Error getting top rooms:", error)
-    res.status(500).json({ success: false, error: error.message })
+    res.status(500).json({ error: error.message })
   }
 })
 
-app.get("/api/nhom12/instances", async (req, res) => {
+// Monitoring endpoints
+app.get("/api/monitoring/stats", async (req, res) => {
   try {
-    const instanceStats = await dashboardService.getInstanceStats()
-    res.json({
-      success: true,
-      data: instanceStats,
-      timestamp: new Date().toISOString(),
-    })
+    const stats = {
+      activeUsers: await monitoring.getActiveUsers("1h"),
+      averageResponseTime: await monitoring.getAverageResponseTime("1h"),
+      shardStatus: await dbSharding.getShardStatus(),
+      circuitBreakers: {
+        database: dbCircuitBreaker.getStatus(),
+        redis: redisCircuitBreaker.getStatus(),
+      },
+      systemMetrics: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        instanceId: process.env.INSTANCE_ID || "unknown",
+      },
+    }
+
+    res.json(stats)
   } catch (error) {
-    console.error("Error getting instance stats:", error)
-    res.status(500).json({ success: false, error: error.message })
+    res.status(500).json({ error: error.message })
   }
 })
 
-// Socket.IO handling
+// Socket.IO connection handling
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id} on instance ${INSTANCE_ID}`)
+  console.log(`User connected: ${socket.id}`)
 
-  // Vào phòng
-  socket.on("join-room", async (data) => {
-    const startTime = Date.now()
-    const { roomId, username } = data
+  // Log connection
+  monitoring.logUserActivity(socket.id, "connected")
 
+  socket.on("join:room", async (data) => {
     try {
-      const room = rooms.get(roomId)
-      if (!room) {
-        socket.emit("error", { message: "Room not found" })
-        return
-      }
+      const { roomId, userId, username } = data
 
-      const user = {
-        id: socket.id,
-        username: username,
-        joinedAt: new Date(),
-        ping: 0,
-      }
-
-      room.users.push(user)
       socket.join(roomId)
-      socket.roomId = roomId
-      socket.username = username
 
-      const responseTime = Date.now() - startTime
+      // Log activity
+      monitoring.logUserActivity(userId, "joined_room", roomId)
 
-      // Ghi vào InfluxDB
-      await influxService.writeRoomJoin(roomId, socket.id, responseTime, INSTANCE_ID)
+      // Notify others in room
+      socket.to(roomId).emit("user:joined", { userId, username })
 
-      // Thông báo cho tất cả user trong phòng
-      io.to(roomId).emit("user-joined", {
-        user: user,
-        room: room,
-        responseTime: responseTime,
-      })
-
-      // Gửi danh sách user hiện tại
-      socket.emit("room-users", room.users)
+      socket.emit("join:success", { roomId })
     } catch (error) {
-      console.error("Error joining room:", error)
-      socket.emit("error", { message: error.message })
+      socket.emit("join:error", { error: error.message })
     }
   })
 
-  // Xử lý tin nhắn chat
-  socket.on("chat-message", (data) => {
-    if (socket.roomId) {
-      io.to(socket.roomId).emit("chat-message", {
-        username: socket.username,
-        message: data.message,
-        timestamp: new Date(),
+  socket.on("leave:room", async (data) => {
+    try {
+      const { roomId, userId } = data
+
+      socket.leave(roomId)
+
+      // Log activity
+      monitoring.logUserActivity(userId, "left_room", roomId)
+
+      // Notify others in room
+      socket.to(roomId).emit("user:left", { userId })
+    } catch (error) {
+      socket.emit("leave:error", { error: error.message })
+    }
+  })
+
+  socket.on("chat:message", async (data) => {
+    try {
+      const { roomId, userId, username, message } = data
+
+      // Log activity
+      monitoring.logUserActivity(userId, "sent_message", roomId)
+
+      // Broadcast message to room
+      io.to(roomId).emit("chat:message", {
+        userId,
+        username,
+        message,
+        timestamp: new Date().toISOString(),
       })
+    } catch (error) {
+      socket.emit("chat:error", { error: error.message })
     }
   })
 
-  // Xử lý ping test
-  socket.on("ping-test", (timestamp) => {
-    socket.emit("pong-test", timestamp)
-  })
-
-  // Cập nhật ping của user
-  socket.on("update-ping", async (pingValue) => {
-    if (socket.roomId) {
-      const room = rooms.get(socket.roomId)
-      if (room) {
-        const user = room.users.find((u) => u.id === socket.id)
-        if (user) {
-          user.ping = pingValue
-          userPings.set(socket.id, pingValue)
-
-          // Tính ping trung bình của phòng
-          const totalPing = room.users.reduce((sum, u) => sum + (u.ping || 0), 0)
-          const averagePing = room.users.length > 0 ? totalPing / room.users.length : 0
-
-          // Gửi cập nhật ping cho tất cả user trong phòng
-          io.to(socket.roomId).emit("ping-update", {
-            averagePing: Math.round(averagePing),
-            users: room.users.map((u) => ({
-              username: u.username,
-              ping: u.ping,
-            })),
-          })
-        }
-      }
-    }
-  })
-
-  // Xử lý disconnect
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`)
-
-    if (socket.roomId) {
-      const room = rooms.get(socket.roomId)
-      if (room) {
-        room.users = room.users.filter((u) => u.id !== socket.id)
-        userPings.delete(socket.id)
-
-        // Thông báo user rời phòng
-        io.to(socket.roomId).emit("user-left", {
-          userId: socket.id,
-          username: socket.username,
-          remainingUsers: room.users,
-        })
-
-        // Xóa phòng nếu không còn user
-        if (room.users.length === 0) {
-          rooms.delete(socket.roomId)
-        }
-      }
-    }
+    monitoring.logUserActivity(socket.id, "disconnected")
   })
 })
 
-// Tự động ghi ping data mỗi 10 giây
-setInterval(async () => {
-  for (const [roomId, room] of rooms.entries()) {
-    if (room.users.length > 0) {
-      const totalPing = room.users.reduce((sum, u) => sum + (u.ping || 0), 0)
-      const averagePing = totalPing / room.users.length
-
-      try {
-        await influxService.writeRoomPing(roomId, averagePing, room.users.length, INSTANCE_ID)
-      } catch (error) {
-        console.error("Error writing ping data:", error)
-      }
-    }
-  }
-}, 10000)
-
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} - Instance: ${INSTANCE_ID}`)
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down gracefully")
+  server.close(() => {
+    console.log("Process terminated")
+    process.exit(0)
+  })
 })
+
+process.on("SIGINT", () => {
+  console.log("SIGINT received, shutting down gracefully")
+  server.close(() => {
+    console.log("Process terminated")
+    process.exit(0)
+  })
+})
+
+// Start server
+const PORT = process.env.PORT || 3001
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`)
+  console.log(`📊 Instance ID: ${process.env.INSTANCE_ID || "unknown"}`)
+  console.log(`🏥 Health check: http://localhost:${PORT}/health`)
+
+  // Log system metrics periodically
+  setInterval(() => {
+    monitoring.logSystemMetrics()
+  }, 30000) // Every 30 seconds
+})
+
+module.exports = { app, server, io }
