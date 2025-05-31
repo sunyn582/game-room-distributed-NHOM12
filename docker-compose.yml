@@ -1,4 +1,4 @@
-# BƯỚC 7: Cập nhật Docker Compose với Fault Tolerance
+
 version: '3.8'
 
 services:

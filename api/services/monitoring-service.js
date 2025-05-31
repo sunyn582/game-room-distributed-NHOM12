@@ -8,8 +8,8 @@ class MonitoringService {
       token: process.env.INFLUXDB_TOKEN,
     })
 
-    this.org = process.env.INFLUXDB_ORG || "gameroom"
-    this.bucket = process.env.INFLUXDB_BUCKET || "gameroom_data"
+    this.org = process.env.INFLUXDB_ORG || "nhom_12"
+    this.bucket = process.env.INFLUXDB_BUCKET || "wed_game"
     this.writeApi = this.influxDB.getWriteApi(this.org, this.bucket)
     this.queryApi = this.influxDB.getQueryApi(this.org)
 
