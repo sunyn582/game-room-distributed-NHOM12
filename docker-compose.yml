@@ -181,20 +181,22 @@ services:
     networks:
       - gameroom-network
 
-  # Monitoring Dashboard (Optional)
+
+  
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana-1
     ports:
       - "3000:3000"
     environment:
+      - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=26o82oo5
     volumes:
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - influxdb-1
+      - grafana-storage:/var/lib/grafana
     restart: unless-stopped
-    networks:
-      - gameroom-network
+
+volumes:
+  grafana-storage:
 
 volumes:
   influxdb_data_1:
