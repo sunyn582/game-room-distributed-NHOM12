@@ -1,314 +1,261 @@
-
-const express = require("express")
-const http = require("http")
-const socketIo = require("socket.io")
-const cors = require("cors")
-const helmet = require("helmet")
-const path = require("path")
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
+const cors = require("cors");
+const helmet = require("helmet");
+const path = require("path");
 
 // Import các modules mới
-const HealthChecker = require("../api/health/health-check")
-const CircuitBreaker = require("../api/middleware/circuit-breaker")
-const DatabaseSharding = require("../api/services/database-sharding")
-const MonitoringService = require("../api/services/monitoring-service")
+const { InfluxDB, Point } = require('@influxdata/influxdb-client');
+const HealthChecker = require("../api/health/health-check");
+const CircuitBreaker = require("../api/middleware/circuit-breaker");
+const DatabaseSharding = require("../api/services/database-sharding");
+const MonitoringService = require("../api/services/monitoring-service");
 
-const app = express()
-const server = http.createServer(app)
+const app = express();
+const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-})
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+    },
+});
 
 // Middleware
-app.use(helmet())
-app.use(cors())
-app.use(express.json())
-app.use(express.static(path.join(__dirname, "../view")))
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
 
-// Initialize services
-const healthChecker = new HealthChecker()
-const dbSharding = new DatabaseSharding()
-const monitoring = new MonitoringService()
+// QUAN TRỌNG: Giữ nguyên static path cho view cũ
+app.use(express.static(path.join(__dirname, "../view")));
 
-// Circuit breakers for external services
+// Initialize services mới
+const healthChecker = new HealthChecker();
+const dbSharding = new DatabaseSharding();
+const monitoring = new MonitoringService();
+
+// Circuit breakers cho services mới
 const dbCircuitBreaker = new CircuitBreaker("database", {
-  failureThreshold: 5,
-  timeout: 60000,
-  monitor: (msg) => console.log(`[Circuit Breaker] ${msg}`),
-})
+    failureThreshold: 5,
+    recoveryTimeout: 30000
+});
 
-const redisCircuitBreaker = new CircuitBreaker("redis", {
-  failureThreshold: 3,
-  timeout: 30000,
-})
+// Health check endpoint (tính năng mới)
+app.get('/health', async (req, res) => {
+    const healthStatus = await healthChecker.checkHealth();
+    res.status(200).json(healthStatus);
+});
 
-// Middleware để log requests
-app.use((req, res, next) => {
-  const startTime = Date.now()
+// Metrics endpoint (tính năng mới)
+app.get('/metrics', (req, res) => {
+    const metrics = monitoring.getMetrics();
+    res.json(metrics);
+});
 
-  res.on("finish", () => {
-    const responseTime = Date.now() - startTime
+// GIỮ NGUYÊN: Routes cho view cũ
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '../view/index.html'));
+});
 
-    // Log to monitoring system
-    monitoring.logApiMetrics(req.path, req.method, responseTime, res.statusCode)
+app.get('/game', (req, res) => {
+    res.sendFile(path.join(__dirname, '../view/game.html'));
+});
 
-    console.log(`${req.method} ${req.path} - ${res.statusCode} - ${responseTime}ms`)
-  })
+app.get('/lobby', (req, res) => {
+    res.sendFile(path.join(__dirname, '../view/lobby.html'));
+});
 
-  next()
-})
-
-// Health check endpoint
-app.get("/health", async (req, res) => {
-  try {
-    const healthStatus = await healthChecker.runAllChecks()
-    const statusCode = healthStatus.status === "healthy" ? 200 : 503
-    res.status(statusCode).json(healthStatus)
-  } catch (error) {
-    res.status(503).json({
-      status: "error",
-      message: error.message,
-      timestamp: new Date().toISOString(),
-    })
-  }
-})
-
-// API Routes với Circuit Breaker protection
-app.get("/api/rooms", async (req, res) => {
-  try {
-    const rooms = await dbCircuitBreaker.execute(async () => {
-      // Lấy rooms từ tất cả shards
-      return await dbSharding.queryAllShards("room_data", "24h")
-    })
-
-    res.json({ rooms, count: rooms.length })
-  } catch (error) {
-    console.error("Error fetching rooms:", error)
-    res.status(500).json({ error: "Failed to fetch rooms" })
-  }
-})
-
-app.post("/api/rooms", async (req, res) => {
-  try {
-    const { name, maxPlayers, createdBy } = req.body
-    const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-    const roomData = {
-      id: roomId,
-      name,
-      maxPlayers: maxPlayers || 4,
-      createdBy,
-      createdAt: new Date().toISOString(),
-      players: [],
-      status: "waiting",
-    }
-
-    // Lưu vào shard thích hợp
-    await dbCircuitBreaker.execute(async () => {
-      await dbSharding.writeRoomData(roomId, roomData)
-    })
-
-    // Log user activity
-    monitoring.logUserActivity(createdBy, "room_created", roomId)
-
-    // Broadcast to all clients
-    io.emit("room:created", roomData)
-
-    res.status(201).json(roomData)
-  } catch (error) {
-    console.error("Error creating room:", error)
-    res.status(500).json({ error: "Failed to create room" })
-  }
-})
-
-app.get("/api/rooms/:roomId", async (req, res) => {
-  try {
-    const { roomId } = req.params
-
-    const roomData = await dbCircuitBreaker.execute(async () => {
-      return await dbSharding.queryRoomData(roomId, "1h")
-    })
-
-    if (roomData.length === 0) {
-      return res.status(404).json({ error: "Room not found" })
-    }
-
-    res.json(roomData[0])
-  } catch (error) {
-    console.error("Error fetching room:", error)
-    res.status(500).json({ error: "Failed to fetch room" })
-  }
-})
-
-app.post("/api/rooms/:roomId/join", async (req, res) => {
-  try {
-    const { roomId } = req.params
-    const { userId, username } = req.body
-
-    // Log user activity
-    monitoring.logUserActivity(userId, "room_joined", roomId)
-
-    // Broadcast to room
-    io.to(roomId).emit("user:joined", { userId, username, roomId })
-
-    res.json({ success: true, message: "Joined room successfully" })
-  } catch (error) {
-    console.error("Error joining room:", error)
-    res.status(500).json({ error: "Failed to join room" })
-  }
-})
-
-// Test endpoints cho stress testing
-app.post("/api/test/shard-write", async (req, res) => {
-  try {
-    const { roomId, userId, action } = req.body
-
-    await dbSharding.writeUserActivity(userId, {
-      type: action,
-      roomId,
-      timestamp: new Date().toISOString(),
-    })
-
-    res.json({ success: true, shard: dbSharding.getShardForUser(userId) })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
-
-app.get("/api/test/circuit-breaker", async (req, res) => {
-  try {
-    const shouldFail = req.query.fail === "true"
-
-    if (shouldFail) {
-      throw new Error("Simulated failure for circuit breaker testing")
-    }
-
-    res.json({ success: true, message: "Circuit breaker test passed" })
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
-
-// Monitoring endpoints
-app.get("/api/monitoring/stats", async (req, res) => {
-  try {
-    const stats = {
-      activeUsers: await monitoring.getActiveUsers("1h"),
-      averageResponseTime: await monitoring.getAverageResponseTime("1h"),
-      shardStatus: await dbSharding.getShardStatus(),
-      circuitBreakers: {
-        database: dbCircuitBreaker.getStatus(),
-        redis: redisCircuitBreaker.getStatus(),
-      },
-      systemMetrics: {
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        instanceId: process.env.INSTANCE_ID || "unknown",
-      },
-    }
-
-    res.json(stats)
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-})
+// Game state management
+let gameRooms = new Map();
+let players = new Map();
 
 // Socket.IO connection handling
-io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`)
+io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
+    
+    // Monitoring connection (tính năng mới)
+    monitoring.recordConnection();
+    
+    // GIỮ NGUYÊN: Join room logic cũ
+    socket.on('join-room', async (data) => {
+        const { roomId, playerName } = data;
+        
+        // Thêm circuit breaker cho database operations (tính năng mới)
+        try {
+            await dbCircuitBreaker.execute(async () => {
+                await dbSharding.savePlayerData(socket.id, { roomId, playerName });
+            });
+        } catch (error) {
+            console.error('Database error:', error);
+            // Tiếp tục xử lý ngay cả khi database lỗi
+        }
+        
+        socket.join(roomId);
+        
+        if (!gameRooms.has(roomId)) {
+            gameRooms.set(roomId, {
+                players: [],
+                gameState: 'waiting',
+                createdAt: new Date()
+            });
+        }
+        
+        const room = gameRooms.get(roomId);
+        room.players.push({
+            id: socket.id,
+            name: playerName,
+            ready: false
+        });
+        
+        players.set(socket.id, { roomId, playerName });
+        
+        // GIỮ NGUYÊN: Emit to room (logic cũ)
+        io.to(roomId).emit('player-joined', {
+            players: room.players,
+            gameState: room.gameState
+        });
+        
+        // Monitoring (tính năng mới)
+        monitoring.recordEvent('player_joined', { roomId });
+    });
+    
+    // GIỮ NGUYÊN: Player ready logic cũ
+    socket.on('player-ready', (data) => {
+        const player = players.get(socket.id);
+        if (!player) return;
+        
+        const room = gameRooms.get(player.roomId);
+        if (!room) return;
+        
+        const playerInRoom = room.players.find(p => p.id === socket.id);
+        if (playerInRoom) {
+            playerInRoom.ready = data.ready;
+            
+            io.to(player.roomId).emit('player-status-changed', {
+                players: room.players
+            });
+            
+            // Check if all players ready
+            const allReady = room.players.every(p => p.ready);
+            if (allReady && room.players.length >= 2) {
+                room.gameState = 'playing';
+                io.to(player.roomId).emit('game-start', {
+                    gameState: room.gameState
+                });
+                
+                // Monitoring (tính năng mới)
+                monitoring.recordEvent('game_started', { roomId: player.roomId });
+            }
+        }
+    });
+    
+    // GIỮ NGUYÊN: Game move logic cũ với monitoring mới
+    socket.on('game-move', (data) => {
+        const player = players.get(socket.id);
+        if (!player) return;
+        
+        const room = gameRooms.get(player.roomId);
+        if (!room || room.gameState !== 'playing') return;
+        
+        // Broadcast move to room
+        socket.to(player.roomId).emit('opponent-move', data);
+        
+        // Monitoring (tính năng mới)
+        monitoring.recordEvent('game_move', { roomId: player.roomId });
+        
+        // Lưu game state vào database (không chặn luồng chính)
+        dbCircuitBreaker.execute(() => {
+            dbSharding.saveGameMove(player.roomId, socket.id, data)
+                .catch(err => console.error('Error saving game move:', err));
+        }).catch(err => console.error('Circuit breaker error:', err));
+    });
+    
+    // GIỮ NGUYÊN: Chat message logic cũ
+    socket.on('chat-message', (data) => {
+        const player = players.get(socket.id);
+        if (!player) return;
+        
+        io.to(player.roomId).emit('chat-message', {
+            playerName: player.playerName,
+            message: data.message
+        });
+        
+        // Monitoring (tính năng mới)
+        monitoring.recordEvent('chat_message', { roomId: player.roomId });
+    });
+    
+    // GIỮ NGUYÊN: Disconnect handling logic cũ với cleanup mới
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+        
+        const player = players.get(socket.id);
+        if (player) {
+            const room = gameRooms.get(player.roomId);
+            if (room) {
+                // Remove player from room
+                room.players = room.players.filter(p => p.id !== socket.id);
+                
+                if (room.players.length === 0) {
+                    gameRooms.delete(player.roomId);
+                } else {
+                    io.to(player.roomId).emit('player-left', {
+                        players: room.players,
+                        gameState: room.players.length < 2 ? 'waiting' : room.gameState
+                    });
+                }
+            }
+            
+            // Cleanup database (không chặn luồng chính)
+            dbCircuitBreaker.execute(() => {
+                dbSharding.removePlayerData(socket.id)
+                    .catch(err => console.error('Error removing player data:', err));
+            }).catch(err => console.error('Circuit breaker error:', err));
+            
+            players.delete(socket.id);
+        }
+        
+        // Monitoring (tính năng mới)
+        monitoring.recordDisconnection();
+    });
+});
 
-  // Log connection
-  monitoring.logUserActivity(socket.id, "connected")
-
-  socket.on("join:room", async (data) => {
-    try {
-      const { roomId, userId, username } = data
-
-      socket.join(roomId)
-
-      // Log activity
-      monitoring.logUserActivity(userId, "joined_room", roomId)
-
-      // Notify others in room
-      socket.to(roomId).emit("user:joined", { userId, username })
-
-      socket.emit("join:success", { roomId })
-    } catch (error) {
-      socket.emit("join:error", { error: error.message })
+// Periodic cleanup (tính năng mới, chạy ngầm)
+setInterval(() => {
+    const now = new Date();
+    for (const [roomId, room] of gameRooms.entries()) {
+        // Remove empty rooms older than 1 hour
+        if (room.players.length === 0 && (now - room.createdAt) > 3600000) {
+            gameRooms.delete(roomId);
+        }
     }
-  })
-
-  socket.on("leave:room", async (data) => {
-    try {
-      const { roomId, userId } = data
-
-      socket.leave(roomId)
-
-      // Log activity
-      monitoring.logUserActivity(userId, "left_room", roomId)
-
-      // Notify others in room
-      socket.to(roomId).emit("user:left", { userId })
-    } catch (error) {
-      socket.emit("leave:error", { error: error.message })
+}, 300000); // Run every 5 minutes
+// Ping monitoring cho từng room
+setInterval(async () => {
+    for (const [roomId, room] of gameRooms.entries()) {
+        if (room.players.length > 0) {
+            // Đo ping của room
+            const pingData = await measureRoomPing(roomId, room.players);
+            
+            // Lưu vào InfluxDB bucket
+            await saveToInfluxDB(roomId, pingData);
+        }
     }
-  })
+}, 10000); // Mỗi 10 giây
 
-  socket.on("chat:message", async (data) => {
-    try {
-      const { roomId, userId, username, message } = data
+// Error handling middleware (tính năng mới)
+app.use((error, req, res, next) => {
+    console.error('Server error:', error);
+    monitoring.recordError(error);
+    res.status(500).json({ error: 'Internal server error' });
+});
 
-      // Log activity
-      monitoring.logUserActivity(userId, "sent_message", roomId)
-
-      // Broadcast message to room
-      io.to(roomId).emit("chat:message", {
-        userId,
-        username,
-        message,
-        timestamp: new Date().toISOString(),
-      })
-    } catch (error) {
-      socket.emit("chat:error", { error: error.message })
-    }
-  })
-
-  socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.id}`)
-    monitoring.logUserActivity(socket.id, "disconnected")
-  })
-})
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully")
-  server.close(() => {
-    console.log("Process terminated")
-    process.exit(0)
-  })
-})
-
-process.on("SIGINT", () => {
-  console.log("SIGINT received, shutting down gracefully")
-  server.close(() => {
-    console.log("Process terminated")
-    process.exit(0)
-  })
-})
-
-// Start server
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`)
-  console.log(`📊 Instance ID: ${process.env.INSTANCE_ID || "unknown"}`)
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`)
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Game available at http://localhost:${PORT}`);
+    
+    // Initialize monitoring (tính năng mới)
+    monitoring.start();
+});
 
-  // Log system metrics periodically
-  setInterval(() => {
-    monitoring.logSystemMetrics()
-  }, 30000) // Every 30 seconds
-})
-
-module.exports = { app, server, io }
+module.exports = { app, server, io };

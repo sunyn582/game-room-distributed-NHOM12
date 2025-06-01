@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Room - Phòng Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .room-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .room-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .room-info h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+
+        .room-info p {
+            opacity: 0.9;
+        }
+
+        .room-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-light {
+            background: white;
+            color: #667eea;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .room-content {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            min-height: 600px;
+        }
+
+        .game-area {
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .game-board {
+            width: 400px;
+            height: 400px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 3px solid #e9ecef;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+
+        .game-cell {
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .game-cell:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .game-cell.disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .game-status {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .current-player {
+            font-size: 1.2em;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .game-controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-left: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .players-section {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .player-list {
+            list-style: none;
+        }
+
+        .player-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid transparent;
+        }
+
+        .player-item.host {
+            border-color: #ffc107;
+            background: #fff9e6;
+        }
+
+        .player-item.current {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .player-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #667eea;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+
+        .player-info {
+            flex: 1;
+        }
+
+        .player-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .player-status {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+        }
+
+        .chat-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .chat-message.system {
+            background: #e3f2fd;
+            color: #1976d2;
+            font-style: italic;
+        }
+
+        .message-sender {
+            font-weight: 600;
+            color: #667eea;
+            margin-right: 8px;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-send {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .room-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .game-board {
+                width: 300px;
+                height: 300px;
+            }
+            
+            .game-cell {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="room-container">
+        <div class="room-header">
+            <div class="room-info">
+                <h1 id="roomTitle">Phòng Game #<span id="roomId">Loading...</span></h1>
+                <p id="roomStatus">Đang chờ người chơi...</p>
+            </div>
+            <div class="room-actions">
+                <button class="btn btn-light" onclick="copyRoomId()">📋 Sao chép mã</button>
+                <button class="btn btn-danger" onclick="leaveRoom()">🚪 Rời phòng</button>
+            </div>
+        </div>
+        
+        <div class="room-content">
+            <div class="game-area">
+                <div class="game-status">
+                    <div class="current-player" id="gameStatus">Đang chờ bắt đầu game...</div>
+                </div>
+                
+                <div class="game-board" id="gameBoard">
+                    <div class="game-cell" data-index="0" onclick="makeMove(0)"></div>
+                    <div class="game-cell" data-index="1" onclick="makeMove(1)"></div>
+                    <div class="game-cell" data-index="2" onclick="makeMove(2)"></div>
+                    <div class="game-cell" data-index="3" onclick="makeMove(3)"></div>
+                    <div class="game-cell" data-index="4" onclick="makeMove(4)"></div>
+                    <div class="game-cell" data-index="5" onclick="makeMove(5)"></div>
+                    <div class="game-cell" data-index="6" onclick="makeMove(6)"></div>
+                    <div class="game-cell" data-index="7" onclick="makeMove(7)"></div>
+                    <div class="game-cell" data-index="8" onclick="makeMove(8)"></div>
+                </div>
+                
+                <div class="game-controls">
+                    <button class="btn btn-light" onclick="startGame()" id="startBtn">🎮 Bắt đầu game</button>
+                    <button class="btn btn-light" onclick="resetGame()" id="resetBtn">🔄 Chơi lại</button>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="players-section">
+                    <div class="section-title">Người chơi (<span id="playerCount">0</span>/2)</div>
+                    <ul class="player-list" id="playerList">
+                        <!-- Players will be populated here -->
+                    </ul>
+                </div>
+                
+                <div class="chat-section">
+                    <div class="section-title">Chat</div>
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-message system">
+                            Chào mừng đến với phòng game! 🎮
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Nhập tin nhắn..." maxlength="200">
+                        <button class="btn-send" onclick="sendMessage()">Gửi</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game state
+        let ws = null;
+        let roomId = null;
+        let playerName = null;
+        let isHost = false;
+        let gameState = {
+            board: Array(9).fill(''),
+            currentPlayer: 'X',
+            gameActive: false,
+            players: []
+        };
+
+        // Initialize room when page loads
+        window.addEventListener('load', function() {
+            initializeRoom();
+            setupEventListeners();
+        });
+
+        function initializeRoom() {
+            // Get room info from URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            roomId = urlParams.get('roomId') || localStorage.getItem('currentRoom');
+            isHost = urlParams.get('isHost') === 'true';
+            playerName = localStorage.getItem('playerName');
+
+            if (!roomId || !playerName) {
+                alert('Thông tin phòng không hợp lệ');
+                window.location.href = 'index.html';
+                return;
+            }
+
+            document.getElementById('roomId').textContent = roomId;
+            connectToRoom();
+        }
+
+        function connectToRoom() {
+            try {
+                // Replace with your actual WebSocket server URL
+                ws = new WebSocket('ws://localhost:8080');
+                
+                ws.onopen = function() {
+                    // Join the room
+                    ws.send(JSON.stringify({
+                        type: 'join_room_socket',
+                        roomId: roomId,
+                        playerName: playerName,
+                        isHost: isHost
+                    }));
+                };
+                
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleRoomMessage(data);
+                };
+                
+                ws.onclose = function() {
+                    addSystemMessage('Mất kết nối đến server');
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    addSystemMessage('Lỗi kết nối');
+                };
+            } catch (error) {
+                console.error('Connection error:', error);
+                addSystemMessage('Không thể kết nối đến server');
+            }
+        }
+
+        function handleRoomMessage(data) {
+            switch(data.type) {
+                case 'room_state':
+                    updateRoomState(data.state);
+                    break;
+                case 'player_joined':
+                    addSystemMessage(`${data.playerName} đã tham gia phòng`);
+                    updatePlayerList(data.players);
+                    break;
+                case 'player_left':
+                    addSystemMessage(`${data.playerName} đã rời phòng`);
+                    updatePlayerList(data.players);
+                    break;
+                case 'game_started':
+                    startGameState(data.gameState);
+                    addSystemMessage('Game đã bắt đầu!');
+                    break;
+                case 'game_move':
+                    updateGameBoard(data.gameState);
+                    break;
+                case 'game_ended':
+                    endGame(data.result);
+                    break;
+                case 'chat_message':
+                    addChatMessage(data.sender, data.message);
+                    break;
+                case 'error':
+                    addSystemMessage(`Lỗi: ${data.message}`);
+                    break;
+            }
+        }
+
+        function updateRoomState(state) {
+            gameState = { ...gameState, ...state };
+            updatePlayerList(state.players);
+            updateGameBoard(state);
+            updateGameStatus();
+        }
+
+        function updatePlayerList(players) {
+            const playerList = document.getElementById('playerList');
+            const playerCount = document.getElementById('playerCount');
+            
+            playerList.innerHTML = '';
+            playerCount.textContent = players.length;
+            
+            players.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.className = 'player-item';
+                if (player.isHost) li.classList.add('host');
+                if (player.name === playerName) li.classList.add('current');
+                
+                li.innerHTML = `
+                    <div class="player-avatar">${player.name.charAt(0).toUpperCase()}</div>
+                    <div class="player-info">
+                        <div class="player-name">${player.name} ${player.isHost ? '👑' : ''}</div>
+                        <div class="player-status">${player.symbol || 'Chờ'}</div>
+                    </div>
+                `;
+                
+                playerList.appendChild(li);
+            });
+            
+            gameState.players = players;
+        }
+
+        function updateGameBoard(state) {
+            if (state.board) {
+                state.board.forEach((cell, index) => {
+                    const cellElement = document.querySelector(`[data-index="${index}"]`);
+                    cellElement.textContent = cell;
+                    cellElement.classList.toggle('disabled', !state.gameActive || cell !== '');
+                });
+                gameState.board = state.board;
+                gameState.currentPlayer = state.currentPlayer;
+                gameState.gameActive = state.gameActive;
+            }
+            updateGameStatus();
+        }
+
+        function updateGameStatus() {
+            const statusElement = document.getElementById('gameStatus');
+            const startBtn = document.getElementById('startBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            
+            if (!gameState.gameActive) {
+                statusElement.textContent = 'Đang chờ bắt đầu game...';
+                startBtn.style.display = isHost ? 'block' : 'none';
+                resetBtn.style.display = 'none';
+            } else {
+                const currentPlayerName = gameState.players.find(p => p.symbol === gameState.currentPlayer)?.name || 'Unknown';
+                statusElement.textContent = `Lượt của: ${currentPlayerName} (${gameState.currentPlayer})`;
+                startBtn.style.display = 'none';
+                resetBtn.style.display = isHost ? 'block' : 'none';
+            }
+        }
+
+        function makeMove(index) {
+            if (!gameState.gameActive || gameState.board[index] !== '') return;
+            
+            const currentPlayer = gameState.players.find(p => p.name === playerName);
+            if (!currentPlayer || currentPlayer.symbol !== gameState.currentPlayer) return;
+            
+            ws.send(JSON.stringify({
+                type: 'game_move',
+                roomId: roomId,
+                playerName: playerName,
+                move: index
+            }));
+        }
+
+        function startGame() {
+            if (!isHost) return;
+            
+            ws.send(JSON.stringify({
+                type: 'start_game',
+                roomId: roomId,
+                playerName: playerName
+            }));
+        }
+
+        function resetGame() {
+            if (!isHost) return;
+            
+            ws.send(JSON.stringify({
+                type: 'reset_game',
+                roomId: roomId,
+                playerName: playerName
+            }));
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            ws.send(JSON.stringify({
+                type: 'chat_message',
+                roomId: roomId,
+                playerName: playerName,
+                message: message
+            }));
+            
+            input.value = '';
+        }
+
+        function addChatMessage(sender, message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message';
+            messageDiv.innerHTML = `<span class="message-sender">${sender}:</span>${message}`;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addSystemMessage(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message system';
+            messageDiv.textContent = message;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function copyRoomId() {
+            navigator.clipboard.writeText(roomId).then(() => {
+                alert('Đã sao chép mã phòng!');
+            });
+        }
+
+        function leaveRoom() {
+            if (confirm('Bạn có chắc muốn rời phòng?')) {
+                ws.send(JSON.stringify({
+                    type: 'leave_room',
+                    roomId: roomId,
+                    playerName: playerName
+                }));
+                
+                localStorage.removeItem('currentRoom');
+                window.location.href = 'index.html';
+            }
+        }
+
+        function setupEventListeners() {
+            // Enter key to send chat message
+            document.getElementById('chatInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Prevent leaving page accidentally
+            window.addEventListener('beforeunload', function(e) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'leave_room',
+                        roomId: roomId,
+                        playerName: playerName
+                    }));
+                }
+            });
+        }
+
+        function startGameState(gameState) {
+            updateGameBoard(gameState);
+            updateGameStatus();
+        }
+
+        function endGame(result) {
+            gameState.gameActive = false;
+            updateGameStatus();
+            
+            let message = '';
+            if (result.winner) {
+                message = `🎉 ${result.winner} đã thắng!`;
+            } else {
+                message = '🤝 Hòa!';
+            }
+            
+            addSystemMessage(message);
+            
+            // Show game over overlay
+            setTimeout(() => {
+                alert(message);
+            }, 500);
+        }
+    </script>
+</body>
+</html>

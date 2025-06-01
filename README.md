@@ -479,8 +479,8 @@ game-room-distributed-NHOM12/
 
 | Tên | GitHub | Vai trò | Chuyên môn |
 |-----|--------|---------|------------|
-| Võ Văn Sơn | [@sunyn582](https://github.com/sunyn582) | Team Lead, Backend Developer | InfluxDB, Node.js |
-| EchoHuyn | [@EchoHuyn](https://github.com/EchoHuyn) | Frontend Developer, DevOps | Grafana, Docker |
+| Võ Văn Sơn | [@sunyn582](https://github.com/sunyn582) | Team Lead, Backend Developer |
+| EchoHuyn | [@EchoHuyn](https://github.com/EchoHuyn) | Frontend Developer, DevOps |
 
 ## 📄 License
 
@@ -493,13 +493,6 @@ MIT License - xem file [LICENSE](LICENSE) để biết thêm chi tiết.
 - [InfluxDB Community](https://community.influxdata.com/)
 - [InfluxDB GitHub](https://github.com/influxdata/influxdb)
 
-### Project Support
-Nếu bạn gặp vấn đề hoặc có câu hỏi:
-1. Tạo issue trên GitHub
-2. Liên hệ qua email: [your-email@example.com]
-3. Join Discord server: [link-to-discord]
-
----
 
 **Lưu ý**: Dự án này tập trung vào việc sử dụng InfluxDB làm công cụ chính cho hệ thống phân tán. Tất cả các thành phần khác được thiết kế để hỗ trợ và tối ưu hóa việc sử dụng InfluxDB.
 
