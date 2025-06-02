@@ -1,0 +1,44 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB1
+    type: influxdb
+    access: proxy
+    url: http://influxdb1:8086
+    database: buckets1
+    user: boies2608
+    secureJsonData:
+      password: 26o82oo5
+    jsonData:
+      version: Flux
+      organization: nhom_12
+      defaultBucket: buckets1
+      tlsSkipVerify: true
+
+  - name: InfluxDB2
+    type: influxdb
+    access: proxy
+    url: http://influxdb2:8086
+    database: buckets1
+    user: boies2608
+    secureJsonData:
+      password: 26o82oo5
+    jsonData:
+      version: Flux
+      organization: nhom_12
+      defaultBucket: buckets1
+      tlsSkipVerify: true
+
+  - name: InfluxDB3
+    type: influxdb
+    access: proxy
+    url: http://influxdb3:8086
+    database: buckets1
+    user: boies2608
+    secureJsonData:
+      password: 26o82oo5
+    jsonData:
+      version: Flux
+      organization: nhom_12
+      defaultBucket: buckets1
+      tlsSkipVerify: true

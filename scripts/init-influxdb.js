@@ -30,7 +30,7 @@ async function initInfluxDB() {
     const bucketsAPI = new BucketsAPI(influxDB)
     const buckets = await bucketsAPI.getBuckets({ org: "nhom_12" })
 
-    let wedGameBucket = buckets.buckets?.find((bucket) => bucket.name === "wed-game")
+    let wedGameBucket = buckets.buckets?.find((bucket) => bucket.name === "buckets1")
 
     if (!wedGameBucket) {
       console.log("📦 Tạo bucket wed-game...")

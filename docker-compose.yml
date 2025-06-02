@@ -1,4 +1,3 @@
-
 version: '3.8'
 
 services:
@@ -9,203 +8,156 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
-      api-1:
-        condition: service_healthy
-      api-2:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
+      - app1
+      - app2
+      - app3
     networks:
-      - gameroom-network
+      - game-network
 
-  # API Service Instance 1
-  api-1:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - INSTANCE_ID=api-1
-      - INFLUXDB_URL=http://influxdb-1:8086
-      - INFLUXDB_URL_1=http://influxdb-1:8087
-      - INFLUXDB_URL_2=http://influxdb-2:8088
-      - INFLUXDB_URL_3=http://influxdb-3:8089
-      - INFLUXDB_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
-      - INFLUXDB_ORG=nhom_12
-      - INFLUXDB_BUCKET=wed_game
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      influxdb-1:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-    networks:
-      - gameroom-network
-
-  # API Service Instance 2
-  api-2:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - INSTANCE_ID=api-2
-      - INFLUXDB_URL=http://influxdb-2:8086
-      - INFLUXDB_URL_1=http://influxdb-1:8087
-      - INFLUXDB_URL_2=http://influxdb-2:8088
-      - INFLUXDB_URL_3=http://influxdb-3:8089
-      - INFLUXDB_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
-      - INFLUXDB_ORG=nhom_12
-      - INFLUXDB_BUCKET=wed_game
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      influxdb-2:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-    networks:
-      - gameroom-network
-
-  # InfluxDB Shard 1
-  influxdb-1:
-    image: influxdb:2.7
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
-      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
-      - DOCKER_INFLUXDB_INIT_ORG=gameroom
-      - DOCKER_INFLUXDB_INIT_BUCKET=wed_game
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
-    ports:
-      - "8086:8086"
-    volumes:
-      - influxdb_data_1:/var/lib/influxdb2
-      - influxdb_config_1:/etc/influxdb2
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    networks:
-      - gameroom-network
-
-  # InfluxDB Shard 2
-  influxdb-2:
-    image: influxdb:2.7
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
-      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
-      - DOCKER_INFLUXDB_INIT_ORG=nhom_12
-      - DOCKER_INFLUXDB_INIT_BUCKET=wed_game
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
-    ports:
-      - "8087:8086"
-    volumes:
-      - influxdb_data_2:/var/lib/influxdb2
-      - influxdb_config_2:/etc/influxdb2
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    networks:
-      - gameroom-network
-
-  # InfluxDB Shard 3
-  influxdb-3:
-    image: influxdb:2.7
-    environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
-      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
-      - DOCKER_INFLUXDB_INIT_ORG=nhom_12
-      - DOCKER_INFLUXDB_INIT_BUCKET=wed_game
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
-    ports:
-      - "8088:8086"
-    volumes:
-      - influxdb_data_3:/var/lib/influxdb2
-      - influxdb_config_3:/etc/influxdb2
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    networks:
-      - gameroom-network
-
-  # Redis for session management and caching
+  # Redis for caching and session management
   redis:
-    image: redis:7-alpine
+    image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    command: redis-server --appendonly yes
+      - redis-data:/data
     networks:
-      - gameroom-network
+      - game-network
 
+  # Application instances
+  app1:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - APP_ID=app1
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - INFLUXDB_URL=http://influxdb1:8086
+      - INFLUXDB_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
+      - INFLUXDB_ORG=nhom_12
+      - INFLUXDB_BUCKET=bucket1
+    ports:
+      - "3001:3001"
+    depends_on:
+      - redis
+      - influxdb1
+    networks:
+      - game-network
+    restart: unless-stopped
 
-  
+  app2:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - APP_ID=app2
+      - PORT=3002
+      - REDIS_URL=redis://redis:6379
+      - INFLUXDB_URL=http://influxdb2:8086
+      - INFLUXDB_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
+      - INFLUXDB_ORG=nhom_12
+      - INFLUXDB_BUCKET=buckets1
+    ports:
+      - "3002:3002"
+    depends_on:
+      - redis
+      - influxdb2
+    networks:
+      - game-network
+    restart: unless-stopped
+
+  app3:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - APP_ID=app3
+      - PORT=3003
+      - REDIS_URL=redis://redis:6379
+      - INFLUXDB_URL=http://influxdb3:8086
+      - INFLUXDB_TOKEN=zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w==
+      - INFLUXDB_ORG=nhom_12
+      - INFLUXDB_BUCKET=buckets1
+    ports:
+      - "3003:3003"
+    depends_on:
+      - redis
+      - influxdb3
+    networks:
+      - game-network
+    restart: unless-stopped
+
+  # InfluxDB instances for data sharding
+  influxdb1:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
+      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
+      - DOCKER_INFLUXDB_INIT_ORG=nhom_12
+      - DOCKER_INFLUXDB_INIT_BUCKET=buckets1
+    volumes:
+      - influxdb1-data:/var/lib/influxdb2
+    networks:
+      - game-network
+
+  influxdb2:
+    image: influxdb:2.7
+    ports:
+      - "8087:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
+      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
+      - DOCKER_INFLUXDB_INIT_ORG=nhom_12
+      - DOCKER_INFLUXDB_INIT_BUCKET=buckets1
+    volumes:
+      - influxdb2-data:/var/lib/influxdb2
+    networks:
+      - game-network
+
+  influxdb3:
+    image: influxdb:2.7
+    ports:
+      - "8088:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=boies2608
+      - DOCKER_INFLUXDB_INIT_PASSWORD=26o82oo5
+      - DOCKER_INFLUXDB_INIT_ORG=nhom_12
+      - DOCKER_INFLUXDB_INIT_BUCKET=buckets1
+    volumes:
+      - influxdb3-data:/var/lib/influxdb2
+    networks:
+      - game-network
+
+  # Grafana for monitoring
   grafana:
     image: grafana/grafana:latest
-    container_name: grafana-1
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=26o82oo5
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
     volumes:
-      - grafana-storage:/var/lib/grafana
-    restart: unless-stopped
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - influxdb1
+      - influxdb2
+      - influxdb3
+    networks:
+      - game-network
 
 volumes:
-  grafana-storage:
-  influxdb_data_1:
-  influxdb_config_1:
-  influxdb_data_2:
-  influxdb_config_2:
-  influxdb_data_3:
-  influxdb_config_3:
-  redis_data:
-  grafana_data:
+  redis-data:
+  influxdb1-data:
+  influxdb2-data:
+  influxdb3-data:
+  grafana-data:
 
 networks:
-  gameroom-network:
+  game-network:
     driver: bridge

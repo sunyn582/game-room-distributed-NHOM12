@@ -3,325 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Room - Trang Chủ</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            padding: 40px;
-            text-align: center;
-            max-width: 500px;
-            width: 90%;
-        }
-
-        .logo {
-            font-size: 2.5em;
-            color: #667eea;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 500;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e1e5e9;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
-        }
-
-        .btn {
-            flex: 1;
-            padding: 15px 20px;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #f8f9fa;
-            color: #667eea;
-            border: 2px solid #667eea;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-        }
-
-        .online-count {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            color: #666;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: #28a745;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .error-message {
-            color: #dc3545;
-            margin-top: 10px;
-            padding: 10px;
-            background: #f8d7da;
-            border-radius: 5px;
-            display: none;
-        }
-    </style>
+    <title>Game Room Distributed System</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="logo">🎮 Game Room</div>
-        <div class="subtitle">Hệ thống phòng game phân tán</div>
-        
-        <form id="joinForm">
-            <div class="form-group">
-                <label for="playerName">Tên người chơi:</label>
-                <input type="text" id="playerName" name="playerName" placeholder="Nhập tên của bạn..." required>
+        <header>
+            <h1>🎮 Game Room System</h1>
+            <div class="status-bar">
+                <span id="connection-status">Connecting...</span>
+                <span id="ping-display">Ping: --ms</span>
             </div>
-            
-            <div class="form-group">
-                <label for="roomId">Mã phòng (tùy chọn):</label>
-                <input type="text" id="roomId" name="roomId" placeholder="Nhập mã phòng để tham gia...">
+        </header>
+
+        <main>
+            <!-- Room Creation Section -->
+            <section class="room-creation">
+                <h2>Tạo Phòng Mới</h2>
+                <div class="create-room-form">
+                    <input type="text" id="room-name" placeholder="Nhập tên phòng..." maxlength="50">
+                    <button id="create-room-btn">🚀 Tạo Phòng</button>
+                </div>
+            </section>
+
+            <!-- Room List Section -->
+            <section class="room-list">
+                <h2>Danh Sách Phòng</h2>
+                <div id="rooms-container">
+                    <div class="loading">Đang tải danh sách phòng...</div>
+                </div>
+            </section>
+
+            <!-- Chat Section (Hidden initially) -->
+            <section class="chat-section" id="chat-section" style="display: none;">
+                <div class="chat-header">
+                    <h3 id="current-room-name">Phòng Chat</h3>
+                    <div class="room-info">
+                        <span id="room-ping">Ping: --ms</span>
+                        <span id="member-count">Thành viên: 0</span>
+                        <button id="leave-room-btn">🚪 Rời Phòng</button>
+                    </div>
+                </div>
+
+                <div class="game-suggestion" id="game-suggestion">
+                    <h4>🎯 Gợi ý Game</h4>
+                    <div id="suggestion-content">
+                        <p>Đang phân tích ping để gợi ý game phù hợp...</p>
+                    </div>
+                </div>
+
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." maxlength="500">
+                        <button id="send-message-btn">📤 Gửi</button>
+                    </div>
+                </div>
+
+                <div class="chat-features">
+                    <button id="emoji-btn">😀</button>
+                    <button id="clear-chat-btn">🗑️ Xóa Chat</button>
+                    <button id="export-chat-btn">💾 Xuất Chat</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Emoji Picker Modal -->
+    <div class="modal" id="emoji-modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Chọn Emoji</h3>
+            <div class="emoji-grid">
+                <span class="emoji">😀</span><span class="emoji">😂</span><span class="emoji">😍</span><span class="emoji">🤔</span>
+                <span class="emoji">😎</span><span class="emoji">😢</span><span class="emoji">😡</span><span class="emoji">🤯</span>
+                <span class="emoji">🎮</span><span class="emoji">🏆</span><span class="emoji">🔥</span><span class="emoji">💯</span>
+                <span class="emoji">👍</span><span class="emoji">👎</span><span class="emoji">❤️</span><span class="emoji">💀</span>
             </div>
-            
-            <div class="error-message" id="errorMessage"></div>
-            
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary" onclick="createRoom()">
-                    Tạo phòng mới
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="joinRoom()">
-                    Tham gia phòng
-                </button>
-            </div>
-        </form>
-        
-        <div class="online-count">
-            <span class="status-indicator"></span>
-            <span id="onlineCount">Đang kết nối...</span>
         </div>
     </div>
 
-    <script>
-        // WebSocket connection for real-time updates
-        let ws = null;
-        let isConnected = false;
-
-        // Initialize connection when page loads
-        window.addEventListener('load', function() {
-            connectToServer();
-            loadPlayerName();
-        });
-
-        function connectToServer() {
-            try {
-                // Replace with your actual WebSocket server URL
-                ws = new WebSocket('ws://localhost:8080');
-                
-                ws.onopen = function() {
-                    isConnected = true;
-                    updateConnectionStatus();
-                    requestOnlineCount();
-                };
-                
-                ws.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    handleServerMessage(data);
-                };
-                
-                ws.onclose = function() {
-                    isConnected = false;
-                    updateConnectionStatus();
-                    // Attempt to reconnect after 3 seconds
-                    setTimeout(connectToServer, 3000);
-                };
-                
-                ws.onerror = function(error) {
-                    console.error('WebSocket error:', error);
-                    showError('Không thể kết nối đến server');
-                };
-            } catch (error) {
-                console.error('Connection error:', error);
-                updateConnectionStatus();
-            }
-        }
-
-        function handleServerMessage(data) {
-            switch(data.type) {
-                case 'online_count':
-                    document.getElementById('onlineCount').textContent = 
-                        `${data.count} người đang online`;
-                    break;
-                case 'room_created':
-                    localStorage.setItem('currentRoom', data.roomId);
-                    localStorage.setItem('playerName', document.getElementById('playerName').value);
-                    window.location.href = `room.html?roomId=${data.roomId}&isHost=true`;
-                    break;
-                case 'room_joined':
-                    localStorage.setItem('currentRoom', data.roomId);
-                    localStorage.setItem('playerName', document.getElementById('playerName').value);
-                    window.location.href = `room.html?roomId=${data.roomId}&isHost=false`;
-                    break;
-                case 'error':
-                    showError(data.message);
-                    break;
-            }
-        }
-
-        function updateConnectionStatus() {
-            const statusElement = document.getElementById('onlineCount');
-            if (isConnected) {
-                statusElement.textContent = 'Đã kết nối - Đang tải...';
-            } else {
-                statusElement.textContent = 'Mất kết nối - Đang thử kết nối lại...';
-            }
-        }
-
-        function requestOnlineCount() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'get_online_count' }));
-            }
-        }
-
-        function createRoom() {
-            const playerName = document.getElementById('playerName').value.trim();
-            
-            if (!playerName) {
-                showError('Vui lòng nhập tên người chơi');
-                return;
-            }
-            
-            if (!isConnected) {
-                showError('Không có kết nối đến server');
-                return;
-            }
-            
-            // Send create room request
-            ws.send(JSON.stringify({
-                type: 'create_room',
-                playerName: playerName
-            }));
-        }
-
-        function joinRoom() {
-            const playerName = document.getElementById('playerName').value.trim();
-            const roomId = document.getElementById('roomId').value.trim();
-            
-            if (!playerName) {
-                showError('Vui lòng nhập tên người chơi');
-                return;
-            }
-            
-            if (!roomId) {
-                showError('Vui lòng nhập mã phòng');
-                return;
-            }
-            
-            if (!isConnected) {
-                showError('Không có kết nối đến server');
-                return;
-            }
-            
-            // Send join room request
-            ws.send(JSON.stringify({
-                type: 'join_room',
-                playerName: playerName,
-                roomId: roomId
-            }));
-        }
-
-        function showError(message) {
-            const errorElement = document.getElementById('errorMessage');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-            
-            // Hide error after 5 seconds
-            setTimeout(() => {
-                errorElement.style.display = 'none';
-            }, 5000);
-        }
-
-        function loadPlayerName() {
-            const savedName = localStorage.getItem('playerName');
-            if (savedName) {
-                document.getElementById('playerName').value = savedName;
-            }
-        }
-
-        // Update online count every 30 seconds
-        setInterval(() => {
-            if (isConnected) {
-                requestOnlineCount();
-            }
-        }, 30000);
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>

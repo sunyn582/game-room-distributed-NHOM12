@@ -1,288 +1,283 @@
-
+const io = require("socket.io-client")
 const axios = require("axios")
-const WebSocket = require("ws")
 
-class GameRoomStressTest {
-  constructor(config = {}) {
-    this.baseUrl = config.baseUrl || "http://localhost:3001"
-    this.wsUrl = config.wsUrl || "ws://localhost:3001"
-    this.results = {
-      api: { requests: 0, successes: 0, failures: 0, responseTimes: [] },
-      websocket: { connections: 0, successes: 0, failures: 0, messages: 0 },
+class StressTest {
+  constructor() {
+    this.baseUrl = "http://localhost"
+    this.clients = []
+    this.rooms = []
+    this.stats = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
       errors: [],
     }
   }
 
-  // Test 1: API Load Test
-  async testApiEndpoints(concurrentUsers = 20, requestsPerUser = 50) {
-    console.log(`🔥 API Load Test: ${concurrentUsers} users × ${requestsPerUser} requests`)
+  async runTest() {
+    console.log("🚀 Starting Distributed System Stress Test...\n")
 
-    const userPromises = []
-    for (let i = 0; i < concurrentUsers; i++) {
-      userPromises.push(this.simulateApiUser(i, requestsPerUser))
-    }
+    // Test 1: API Load Test
+    await this.testAPILoad()
 
-    await Promise.all(userPromises)
-    this.printApiResults()
+    // Test 2: Room Creation Load
+    await this.testRoomCreation()
+
+    // Test 3: WebSocket Connections
+    await this.testWebSocketLoad()
+
+    // Test 4: Concurrent Chat Messages
+    await this.testChatLoad()
+
+    // Test 5: Fault Tolerance
+    await this.testFaultTolerance()
+
+    this.printResults()
   }
 
-  async simulateApiUser(userId, requestCount) {
-    const endpoints = [
-      { method: "GET", path: "/health" },
-      { method: "GET", path: "/api/rooms" },
-      { method: "POST", path: "/api/rooms", data: { name: `Room-${userId}`, maxPlayers: 4 } },
-      { method: "GET", path: `/api/rooms/room-${userId}` },
-    ]
+  async testAPILoad() {
+    console.log("📊 Testing API Load (100 concurrent requests)...")
 
-    for (let i = 0; i < requestCount; i++) {
-      const endpoint = endpoints[i % endpoints.length]
-      const startTime = Date.now()
+    const promises = []
+    const startTime = Date.now()
 
-      try {
-        let response
-        if (endpoint.method === "GET") {
-          response = await axios.get(this.baseUrl + endpoint.path)
-        } else {
-          response = await axios.post(this.baseUrl + endpoint.path, endpoint.data)
-        }
+    for (let i = 0; i < 100; i++) {
+      promises.push(this.makeAPIRequest("/api/health"))
+    }
 
-        const responseTime = Date.now() - startTime
-        this.results.api.requests++
-        this.results.api.successes++
-        this.results.api.responseTimes.push(responseTime)
-      } catch (error) {
-        this.results.api.requests++
-        this.results.api.failures++
-        this.results.errors.push({
-          type: "API",
-          endpoint: endpoint.path,
-          error: error.message,
-        })
+    const results = await Promise.allSettled(promises)
+    const endTime = Date.now()
+
+    const successful = results.filter((r) => r.status === "fulfilled").length
+    const failed = results.filter((r) => r.status === "rejected").length
+
+    console.log(`✅ API Load Test: ${successful} successful, ${failed} failed`)
+    console.log(`⏱️  Total time: ${endTime - startTime}ms\n`)
+
+    this.updateStats(100, successful, failed, endTime - startTime)
+  }
+
+  async testRoomCreation() {
+    console.log("🏠 Testing Room Creation (50 concurrent rooms)...")
+
+    const promises = []
+    const startTime = Date.now()
+
+    for (let i = 0; i < 50; i++) {
+      promises.push(this.createRoom(`StressTest_Room_${i}`))
+    }
+
+    const results = await Promise.allSettled(promises)
+    const endTime = Date.now()
+
+    const successful = results.filter((r) => r.status === "fulfilled").length
+    const failed = results.filter((r) => r.status === "rejected").length
+
+    // Store successful rooms for later tests
+    this.rooms = results.filter((r) => r.status === "fulfilled").map((r) => r.value)
+
+    console.log(`✅ Room Creation: ${successful} successful, ${failed} failed`)
+    console.log(`⏱️  Total time: ${endTime - startTime}ms\n`)
+
+    this.updateStats(50, successful, failed, endTime - startTime)
+  }
+
+  async testWebSocketLoad() {
+    console.log("🔌 Testing WebSocket Connections (100 concurrent clients)...")
+
+    const promises = []
+    const startTime = Date.now()
+
+    for (let i = 0; i < 100; i++) {
+      promises.push(this.createWebSocketClient(i))
+    }
+
+    await Promise.allSettled(promises)
+    const endTime = Date.now()
+
+    console.log(`✅ WebSocket Connections: ${this.clients.length} connected`)
+    console.log(`⏱️  Connection time: ${endTime - startTime}ms\n`)
+
+    // Keep connections for chat test
+  }
+
+  async testChatLoad() {
+    console.log("💬 Testing Chat Load (1000 messages across all clients)...")
+
+    if (this.clients.length === 0 || this.rooms.length === 0) {
+      console.log("❌ Skipping chat test - no clients or rooms available\n")
+      return
+    }
+
+    const promises = []
+    const startTime = Date.now()
+    const messagesPerClient = Math.floor(1000 / this.clients.length)
+
+    this.clients.forEach((client, index) => {
+      // Join a random room
+      const room = this.rooms[index % this.rooms.length]
+      client.emit("join-room", {
+        roomId: room.id,
+        userId: `stress_user_${index}`,
+        userPing: Math.floor(Math.random() * 100),
+      })
+
+      // Send messages
+      for (let i = 0; i < messagesPerClient; i++) {
+        promises.push(this.sendChatMessage(client, room.id, `Message ${i} from client ${index}`))
       }
+    })
 
-      // Random delay between requests
-      await this.sleep(Math.random() * 100)
-    }
+    await Promise.allSettled(promises)
+    const endTime = Date.now()
+
+    console.log(`✅ Chat Load: ${promises.length} messages sent`)
+    console.log(`⏱️  Total time: ${endTime - startTime}ms\n`)
   }
 
-  // Test 2: WebSocket Connection Test
-  async testWebSocketConnections(concurrentConnections = 50, messagesPerConnection = 20) {
-    console.log(`🔌 WebSocket Test: ${concurrentConnections} connections × ${messagesPerConnection} messages`)
+  async testFaultTolerance() {
+    console.log("🛡️  Testing Fault Tolerance...")
 
-    const connectionPromises = []
-    for (let i = 0; i < concurrentConnections; i++) {
-      connectionPromises.push(this.simulateWebSocketUser(i, messagesPerConnection))
-    }
+    // Test with one app instance down (simulate by making requests to specific ports)
+    const ports = [3001, 3002, 3003]
+    const results = []
 
-    await Promise.all(connectionPromises)
-    this.printWebSocketResults()
-  }
-
-  async simulateWebSocketUser(userId, messageCount) {
-    return new Promise((resolve) => {
-      const ws = new WebSocket(this.wsUrl)
-      let sentMessages = 0
-      let receivedMessages = 0
-
-      ws.on("open", () => {
-        this.results.websocket.connections++
-        this.results.websocket.successes++
-
-        // Send messages periodically
-        const sendInterval = setInterval(
-          () => {
-            if (sentMessages >= messageCount) {
-              clearInterval(sendInterval)
-              setTimeout(() => ws.close(), 1000)
-              return
-            }
-
-            const message = {
-              type: "chat",
-              userId: `stress-user-${userId}`,
-              roomId: `stress-room-${userId % 10}`,
-              message: `Test message ${sentMessages} from user ${userId}`,
-              timestamp: Date.now(),
-            }
-
-            ws.send(JSON.stringify(message))
-            sentMessages++
-            this.results.websocket.messages++
-          },
-          500 + Math.random() * 1000,
-        ) // Random interval 0.5-1.5s
-      })
-
-      ws.on("message", (data) => {
-        receivedMessages++
-      })
-
-      ws.on("close", () => {
-        resolve({ sent: sentMessages, received: receivedMessages })
-      })
-
-      ws.on("error", (error) => {
-        this.results.websocket.failures++
-        this.results.errors.push({
-          type: "WebSocket",
-          userId: userId,
-          error: error.message,
+    for (const port of ports) {
+      try {
+        const response = await axios.get(`http://localhost:${port}/api/health`, {
+          timeout: 5000,
         })
-        resolve({ sent: sentMessages, received: receivedMessages })
+        results.push({ port, status: "up", response: response.status })
+      } catch (error) {
+        results.push({ port, status: "down", error: error.message })
+      }
+    }
+
+    const upInstances = results.filter((r) => r.status === "up").length
+    const downInstances = results.filter((r) => r.status === "down").length
+
+    console.log(`✅ Fault Tolerance: ${upInstances} instances up, ${downInstances} instances down`)
+
+    if (upInstances > 0) {
+      console.log("✅ System remains operational with available instances")
+    } else {
+      console.log("❌ All instances are down - system failure")
+    }
+
+    console.log()
+  }
+
+  async makeAPIRequest(endpoint) {
+    const startTime = Date.now()
+    try {
+      const response = await axios.get(`${this.baseUrl}${endpoint}`, {
+        timeout: 10000,
+      })
+      return {
+        success: true,
+        responseTime: Date.now() - startTime,
+        status: response.status,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        responseTime: Date.now() - startTime,
+        error: error.message,
+      }
+    }
+  }
+
+  async createRoom(roomName) {
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/api/rooms`,
+        {
+          roomName: roomName,
+        },
+        {
+          headers: {
+            "X-User-ID": `stress_user_${Date.now()}`,
+          },
+          timeout: 10000,
+        },
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(`Failed to create room: ${error.message}`)
+    }
+  }
+
+  async createWebSocketClient(clientId) {
+    return new Promise((resolve, reject) => {
+      const client = io(this.baseUrl, {
+        timeout: 10000,
+        forceNew: true,
       })
 
-      // Timeout after 60 seconds
+      client.on("connect", () => {
+        this.clients.push(client)
+        resolve(client)
+      })
+
+      client.on("connect_error", (error) => {
+        reject(error)
+      })
+
       setTimeout(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close()
-        }
-      }, 60000)
+        reject(new Error("Connection timeout"))
+      }, 10000)
     })
   }
 
-  // Test 3: Database Sharding Test
-  async testDatabaseSharding(roomCount = 100, usersPerRoom = 10) {
-    console.log(`💾 Database Sharding Test: ${roomCount} rooms × ${usersPerRoom} users`)
-
-    const promises = []
-    for (let roomId = 0; roomId < roomCount; roomId++) {
-      for (let userId = 0; userId < usersPerRoom; userId++) {
-        promises.push(this.testShardWrite(roomId, userId))
-      }
-    }
-
-    await Promise.all(promises)
-    console.log(`✅ Database sharding test completed: ${promises.length} operations`)
-  }
-
-  async testShardWrite(roomId, userId) {
-    try {
-      await axios.post(`${this.baseUrl}/api/test/shard-write`, {
-        roomId: `room-${roomId}`,
-        userId: `user-${userId}`,
-        action: "join",
-        timestamp: Date.now(),
-      })
-    } catch (error) {
-      this.results.errors.push({
-        type: "Sharding",
+  async sendChatMessage(client, roomId, message) {
+    return new Promise((resolve) => {
+      client.emit("chat-message", {
         roomId: roomId,
-        userId: userId,
-        error: error.message,
-      })
-    }
-  }
-
-  // Test 4: Circuit Breaker Test
-  async testCircuitBreaker(failureRate = 0.7, requestCount = 100) {
-    console.log(`⚡ Circuit Breaker Test: ${requestCount} requests with ${failureRate * 100}% failure rate`)
-
-    for (let i = 0; i < requestCount; i++) {
-      try {
-        // Simulate failures by calling a test endpoint
-        await axios.get(`${this.baseUrl}/api/test/circuit-breaker?fail=${Math.random() < failureRate}`)
-      } catch (error) {
-        // Expected failures for circuit breaker testing
-      }
-
-      await this.sleep(100) // Small delay between requests
-    }
-
-    console.log(`✅ Circuit breaker test completed`)
-  }
-
-  // Utility methods
-  sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-  }
-
-  printApiResults() {
-    console.log("\n📊 API TEST RESULTS:")
-    console.log(`Total Requests: ${this.results.api.requests}`)
-    console.log(`Successes: ${this.results.api.successes}`)
-    console.log(`Failures: ${this.results.api.failures}`)
-    console.log(`Success Rate: ${((this.results.api.successes / this.results.api.requests) * 100).toFixed(2)}%`)
-
-    if (this.results.api.responseTimes.length > 0) {
-      const avg = this.results.api.responseTimes.reduce((a, b) => a + b, 0) / this.results.api.responseTimes.length
-      const max = Math.max(...this.results.api.responseTimes)
-      const min = Math.min(...this.results.api.responseTimes)
-
-      console.log(`Average Response Time: ${avg.toFixed(2)}ms`)
-      console.log(`Max Response Time: ${max}ms`)
-      console.log(`Min Response Time: ${min}ms`)
-    }
-  }
-
-  printWebSocketResults() {
-    console.log("\n🔌 WEBSOCKET TEST RESULTS:")
-    console.log(`Total Connections: ${this.results.websocket.connections}`)
-    console.log(`Successful Connections: ${this.results.websocket.successes}`)
-    console.log(`Failed Connections: ${this.results.websocket.failures}`)
-    console.log(`Total Messages Sent: ${this.results.websocket.messages}`)
-    console.log(
-      `Connection Success Rate: ${((this.results.websocket.successes / this.results.websocket.connections) * 100).toFixed(2)}%`,
-    )
-  }
-
-  async runFullStressTest() {
-    console.log("🚀 Starting Full Stress Test Suite...\n")
-
-    // Test 1: API Load
-    await this.testApiEndpoints(30, 50)
-    await this.sleep(2000)
-
-    // Test 2: WebSocket Load
-    await this.testWebSocketConnections(40, 15)
-    await this.sleep(2000)
-
-    // Test 3: Database Sharding
-    await this.testDatabaseSharding(50, 5)
-    await this.sleep(2000)
-
-    // Test 4: Circuit Breaker
-    await this.testCircuitBreaker(0.6, 50)
-
-    this.printFinalResults()
-  }
-
-  printFinalResults() {
-    console.log("\n🎯 FINAL STRESS TEST SUMMARY:")
-    console.log("=".repeat(50))
-
-    const totalRequests = this.results.api.requests
-    const totalSuccesses = this.results.api.successes + this.results.websocket.successes
-    const totalFailures = this.results.api.failures + this.results.websocket.failures
-
-    console.log(`Total Operations: ${totalRequests + this.results.websocket.connections}`)
-    console.log(`Total Successes: ${totalSuccesses}`)
-    console.log(`Total Failures: ${totalFailures}`)
-    console.log(`Overall Success Rate: ${((totalSuccesses / (totalSuccesses + totalFailures)) * 100).toFixed(2)}%`)
-
-    if (this.results.errors.length > 0) {
-      console.log("\n❌ Top Errors:")
-      const errorCounts = {}
-      this.results.errors.forEach((error) => {
-        const key = `${error.type}: ${error.error}`
-        errorCounts[key] = (errorCounts[key] || 0) + 1
+        message: message,
+        userId: `stress_user_${Date.now()}`,
       })
 
-      Object.entries(errorCounts)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
-        .forEach(([error, count]) => {
-          console.log(`  ${error}: ${count} times`)
-        })
-    }
+      // Simulate message processing time
+      setTimeout(resolve, 10)
+    })
+  }
 
-    console.log("\n✅ Stress test completed!")
+  updateStats(total, successful, failed, responseTime) {
+    this.stats.totalRequests += total
+    this.stats.successfulRequests += successful
+    this.stats.failedRequests += failed
+    this.stats.averageResponseTime = (this.stats.averageResponseTime + responseTime) / 2
+  }
+
+  printResults() {
+    console.log("📈 STRESS TEST RESULTS")
+    console.log("========================")
+    console.log(`Total Requests: ${this.stats.totalRequests}`)
+    console.log(`Successful: ${this.stats.successfulRequests}`)
+    console.log(`Failed: ${this.stats.failedRequests}`)
+    console.log(`Success Rate: ${((this.stats.successfulRequests / this.stats.totalRequests) * 100).toFixed(2)}%`)
+    console.log(`Average Response Time: ${this.stats.averageResponseTime.toFixed(2)}ms`)
+    console.log(`WebSocket Connections: ${this.clients.length}`)
+    console.log(`Rooms Created: ${this.rooms.length}`)
+
+    // Cleanup
+    this.cleanup()
+  }
+
+  cleanup() {
+    console.log("\n🧹 Cleaning up connections...")
+    this.clients.forEach((client) => {
+      client.disconnect()
+    })
+    console.log("✅ Cleanup completed")
   }
 }
 
-// Run stress test if called directly
+// Run the stress test
 if (require.main === module) {
-  const test = new GameRoomStressTest()
-  test.runFullStressTest().catch(console.error)
+  const stressTest = new StressTest()
+  stressTest.runTest().catch(console.error)
 }
 
-module.exports = GameRoomStressTest
+module.exports = StressTest

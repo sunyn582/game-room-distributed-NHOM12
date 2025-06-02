@@ -7,7 +7,7 @@ class InfluxDBService {
       process.env.INFLUXDB_TOKEN ||
       "zIGlnIr44LpdJnobJ68V8AHdzsWfaIShovlLY9m5ZDX3j_8SisNNq7BF-btVVgFuHMtlXEkswG0xoO0UoXcw4w=="
     this.org = "nhom_12"
-    this.bucket = "wed-game"
+    this.bucket = "buckets1"
 
     this.influxDB = new InfluxDB({ url: this.url, token: this.token })
     this.writeApi = this.influxDB.getWriteApi(this.org, this.bucket)

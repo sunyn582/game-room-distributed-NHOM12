@@ -1,0 +1,51 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Game Room Distributed System",
+    "tags": ["game-room", "distributed-system"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Room Creation Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "datasource": "InfluxDB1",
+            "query": "from(bucket: \"gameroom-bucket1\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"room_created\")\n  |> count()"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "Average Ping by Room",
+        "type": "timeseries",
+        "targets": [
+          {
+            "datasource": "InfluxDB1",
+            "query": "from(bucket: \"gameroom-bucket1\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"ping_update\")\n  |> filter(fn: (r) => r._field == \"avg_ping\")"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+      },
+      {
+        "id": 3,
+        "title": "Active Rooms by Instance",
+        "type": "piechart",
+        "targets": [
+          {
+            "datasource": "InfluxDB1",
+            "query": "from(bucket: \"gameroom-bucket1\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"room_created\")\n  |> group(columns: [\"app_instance\"])\n  |> count()"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}
